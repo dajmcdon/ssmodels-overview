@@ -284,9 +284,11 @@ ggplot(bind_cols(kf, x=x, y=y), aes(t)) +
 
 * What if we want to estimate them?
 
-__Bayesian way__: `m0` and `P0` are already the parameters of for the prior on `x_1`. Put priors on the other 4.
+__Bayesian way__: `m0` and `P0` are already the parameters of for the prior on 
+$x_1$. Put priors on the other 4.
 
-__Frequentist way__: Just maximize the likelihood. Can technically take `P0` $\rightarrow\infty$ to remove it and `m0`
+__Frequentist way__: Just maximize the likelihood. Can technically take 
+`P0` $\rightarrow\infty$ to remove it and `m0`
 
 --
 
@@ -294,9 +296,138 @@ The Likelihood is produced as a by-product of the Kalman Filter.
 
 $$-\ell(\theta) = \sum_{k=1}^T \left(v_k^\mathsf{T}S_k^{-1}v_k + \log |S_k| + m \log 2\pi\right)$$
 
-```
 
 ---
 
 ## Smoothing (not in the chapter, whoops...)
 
+* We also want $p(x_k | y_1,\ldots,y_{T})$
+
+* Filtering went "forward" in time. At the end we got, 
+$p(x_T | y_1,\ldots,y_{T})$. Smoothing starts there and goes "backward"
+
+* For "everything linear Gaussian", this is again "easy"
+
+* Set $m_T^s = m_T$, $P_T^s = P_T$. 
+
+* For $k = T-1,\ldots,1$, 
+
+
+$$\begin{aligned}
+G_k &= P_k A_k^\mathsf{T} [P_{k+1}^-]^{-1}\\
+m_k^s &= m_k + G_k(m_{k+1}^s - m_{k+1}^-)\\
+P_k^s &= P_k + G_k(P_{k+1}^s - P_{k+1}^-)G_k^\mathsf{T}\\
+x_k | y_1,\ldots,y_T &= N(m^s_k, P_k^s)
+\end{aligned}$$
+
+---
+
+## Comparing the filter and the smoother
+
+* Same data, different code (using a package)
+
+```{r kalman-smoothing, echo = TRUE}
+library(FKF)
+filt <- fkf(a0 = 0, P0 = matrix(5), dt = matrix(0), ct = matrix(0), 
+            Tt = matrix(1), Zt = matrix(1), HHt = matrix(1), GGt = matrix(1), 
+            yt = matrix(y, ncol = length(y)))
+smo <- fks(filt)
+```
+
+```{r plot-smooth, fig.height=3}
+tibble(time = seq_along(x), x = x, filter = c(filt$att), smooth = c(smo$ahatt)) %>%
+  pivot_longer(-time) %>%
+  ggplot(aes(time, value, color = name)) + 
+  geom_line() +
+  theme_bw() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "bottom", axis.title=element_blank(), 
+        legend.title = element_blank())
+```
+
+---
+
+## What about non-linear and/or non-Gaussian
+
+$$\begin{aligned} x_k &\sim p(x_k | x_{k-1}) \\ y_k &\sim p(y_k | x_k)\end{aligned}$$
+
+Then we need to solve integrals. This is a pain. We approximate them. 
+
+These all give **approximations to the filtering distribution**
+
+* Extended Kalman filter - basically do a Taylor approximation, then do Kalman like
+* Uncented Kalman filter - Approximate integrals with Sigma points
+* Particle filter - Sequential Monte Carlo
+* Bootstrap filter (simple version of SMC)
+* Laplace Gaussian filter - Do a Laplace approximation to the distributions
+
+---
+
+## The bootstrap filter
+
+* Need to **simulate** from the transition distribution (`rtrans`)
+* Need to **evaluate** the observation distribution (`dobs`)
+
+```{r bootstrap-filter, echo = TRUE}
+boot_filter <- 
+  function(y, B = 1000, rtrans, dobs, a0 = 0, P0 = 1, perturb = function(x) x) 
+    {
+    n <- length(y)
+    filter_est <- matrix(0, n, B)
+    predict_est <- matrix(0, n, B)
+    init <- rnorm(B, a0, P0)
+    filter_est[1, ] = init
+    for (i in seq(n)) {
+      raw_w <- dobs(y[i], filter_est[i, ])
+      w <- raw_w / sum(raw_w)
+      selection <- sample.int(B, replace = TRUE, prob = w)
+      filter_est[i, ] <- perturb(filter_est[i, selection])
+      predict_est[i, ] <- rtrans(filter_est[i, ])
+      if (i < n) filter_est[i+1, ] <- predict_est[i, ]
+    }
+    list(filt = filter_est, pred = predict_est)
+  }
+```
+
+---
+
+## About the bootstrap filter
+
+* Super simple. Works by using Monte Carlo approximations for all the integrals
+* "Plug and play". All you do is specify 2 functions.
+* Likelihood is a direct consequence.
+* So if the functions depend on parameters, that's cool.
+
+In the SIR:
+
+* `rtrans =  ode_solve(x[t-1], theta)` - numerically propagates 1-step forward
+* `dobs = dnbinom(y[t], x[t], theta)` - evaluate the 1-step likelihood
+
+How do we estimate the parameters $\theta$?
+
+* 0-th order optimization. Want to minimize $f(\theta)$, just evaluate $f$ for $\theta \in \{\theta_1,\ldots,\theta_{huge}\}$, keep the best. `dobs` is the likelihood.
+* 1-st order. Need $\nabla_\theta f(\theta)$.
+* Bayesian. Like 0-th order, but we explore $\Theta$ in a careful manner.
+
+---
+
+## Final notes
+
+Suppose
+$$\begin{aligned}
+x_k &= Bx_{k-1} + \epsilon_k\\
+y_k &= Ax_{k} + \eta_k
+\end{aligned}$$
+
+We can estimate $x_1,\ldots,x_T$ with the Bootstrap filter.
+
+--
+
+$$\hat{x} = \arg\min_x \frac{1}{2}\sum_{k=1}^T (y_k-Ax_k)^2 + \frac{\lambda}{2}
+\sum_{k=2}^T(x_k - Bx_{k-1})^2$$
+
+Here, $\lambda = \sigma^2_\eta / \sigma^2_\epsilon$.
+
+This is just "ridge regression". Exactly the same as "just compute $p(x_1,\ldots,x_T | y_1,\ldots,y_T)$".
+
+> if we don't care about the whole distribution, just write it as a penalized likelihood problem
