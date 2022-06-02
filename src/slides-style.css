@@ -242,7 +242,7 @@ blockquote:after {
 
 
 div.my-footer {
-    background-color: #002145;
+    background-color: var(--primary);
     position: absolute;
     bottom: 0px;
     left: 0px;
@@ -263,11 +263,3 @@ div.my-footer span {
   font-size: 300%;
 }
 
-.const {color: #5E3C99;}
-.accel {color: #B2ABD2;}
-.decel {color: #FDB863;}
-.stress {color: #E66101;}
-.red { color: #FF4900; }
-.dark-blue { color: #053B64;}
-.green { color: #00884E; }
-.yellow { color: yellow; }

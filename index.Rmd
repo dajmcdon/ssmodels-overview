@@ -1,7 +1,7 @@
 ---
-title: "Talk title"
+title: "Quick intro to State Space models"
 author: "Daniel J. McDonald"
-date: "xx Month yyyy"
+date: "02 June 2022"
 output:
   xaringan::moon_reader:
     css: [src/xaringan-themer.css, src/slides-style.css]
@@ -37,8 +37,8 @@ knitr::opts_chunk$set(
 
 ```{r xaringan-themer, include=FALSE, warning=FALSE}
 library(xaringanthemer)
-primary = "#002145"
-secondary = "#6495ed"
+primary = "#598234"
+secondary = "#68829e"
 tertiary = "#ffa319"
 fourth_color = "#DB0B5B"
 
@@ -48,7 +48,7 @@ style_duo_accent(
   header_font_google = google_font("EB Garamond"),
   text_font_google = google_font("Open Sans"),
   code_font_google = google_font("Fira Mono"),
-  text_color = primary,
+  text_color = "#000000",
   table_row_even_background_color = lighten_color(primary, 0.8),
   colors = c(
     tertiary = tertiary, fourth_color = fourth_color,
@@ -64,49 +64,239 @@ style_duo_accent(
 
 layout: true
 
-<div class="my-footer"><span><a href="https://dajmcdon.github.io/talktemplate" style="color:white">dajmcdon.github.io/talk-template</a></span></div> 
+<div class="my-footer"><span><a href="https://dajmcdon.github.io/talktemplate" style="color:white">dajmcdon.github.io/ssmodels-overview</a></span></div> 
 
 ---
 background-image: url("gfx/cover.svg")
 background-size: contain
 background-position: top
 
-<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
+<br/><br/><br/><br/><br/><br/><br/><br/><br/><br/><br/>
 
 
 
-.center[# Talk Title]
+.center[# Quick overview of state space models]
 
 
 .pull-left[
 ###Daniel J. McDonald
 ###University of British Columbia
-####CMStatistics &mdash; xx Month yyyy
+####Reading Group
 ]
 
-<!--
+---
 
-Optional code to include QR links
+## Generic state space model
 
-.pull-right[.center[.middle[
-<table>
-<tr>
-<td>![:scale 60%](gfx/qr-paper.png)</td>
-<td>![:scale 90%](gfx/qr-slides.png)</td>
-<td>![:scale 90%](gfx/qr-mywww.png)</td>
-</tr>
-<tr>
-<td>`r fa("file-alt")` Paper</td>
-<td>`r fa("chalkboard-teacher")` Slides</td>
-<td>`r fa("at")` My WWW</td>
-</tr>
-</table>
-]]]
+.pull-left[
 
-???
+<br><br><br>
+
+$$\begin{aligned} x_k &\sim p(x_k | x_{k-1}) \\ y_k &\sim p(y_k | x_k)\end{aligned}$$
+
+]
+
+.pull-right[
+
+* $x_k$ is unobserved, dimension $n$
+
+* $y_k$ is observed, dimension $m$
+
+* $x$ process is the __transition__ or __process__ equation
+
+* $y$ is the __observation__ or __measurement__ equation
+
+* Both are probability distributions that can depend on parameters $\theta$
+
+* For now, assume $\theta$ is **KNOWN**
+
+* We can allow the densities to vary with time.
+
+]
+
+--
+
+**GOAL(s)**
+
+1. Filtering: given observations, find $p(x_k | y_1,\ldots y_k)$
+
+1. Smoothing: given observations, find $p(x_k | y_1,\ldots y_T)$, $k < T$
+
+1. Forecasting: given observations, find $p(y_{k+1} | y_1,\ldots,y_k)$
+
+---
+
+## Using Bayes Rule
+
+Assume $p(x_0)$ is known
+
+$$p(y_1,\ldots,y_T\ |\ x_1, \ldots, x_T) = \prod_{k=1}^T p(y_k | x_k)$$
+
+$$p(x_0,\ldots,x_T) = p(x_0) \prod_{k=1}^T p(x_k | x_{k-1})$$
+
+$$\begin{aligned}p(x_0,\ldots,x_T\ |\ y_1,\ldots,y_T) &= \frac{p(y_1,\ldots,y_T\ |\ x_1, \ldots, x_T)p(x_0,\ldots,x_T)}{p(y_1,\ldots,y_T)}\\ &\propto p(y_1,\ldots,y_T\ |\ x_1, \ldots, x_T)p(x_0,\ldots,x_T)\end{aligned}$$
+
+In principle, if things are nice, you can compute this posterior (thinking of $x$ as unknown parameters)
+
+But in practice, computing a big multivariate posterior like this is computationally ill-advised.
+
+---
+
+## Generic filtering
+
+* Recursively build up $p(x_k | y_1,\ldots y_k)$.
+
+* Why? Because if we're collecting data in real time, this is all we need to make forecasts for future data.
+
+$$\begin{aligned} &p(y_{T+1} | y_1,\ldots,y_T)\\ &= p(y_{T+1} | x_{T+1}, y_1,\ldots,y_T)\\ &= p(y_{T+1} | x_{T+1} )p(x_{T+1} | y_1,\ldots,y_T)\\ &= p(y_{T+1} | x_{T+1} )p(x_{T+1} | x_T) p(x_T | y_1,\ldots,y_T)\end{aligned}$$
+
+* Can continue to iterate if I want to predict $h$ steps ahead
+
+$$\begin{aligned} &p(y_{T+h} | y_1,\ldots,y_T)= p(y_{T+h} | x_{T+h} )\prod_{j=0}^{h-1} p(x_{T+j+1} | x_{T+j}) p(x_T | y_1,\ldots,y_T)\end{aligned}$$
+
+---
+
+## The filtering recursion
+
+1. Initialization. Fix $p(x_0)$.
+
+Iterate the following for $k=1,\ldots,T$:
+
+2. Predict. $$p(x_k | y_{k-1}) = \int p(x_k | x_{k-1}) p(x_{k-1} | y_1,\ldots, y_{k-1})dx_{k-1}.$$
+
+3. Update. $$p(x_k | y_1,\ldots,y_k) = \frac{p(y_k | x_k)p(x_k | y_1,\ldots,y_{k-1})}{p(y_1,\ldots,y_k)}$$
+
+--
+
+In general, this is somewhat annoying because these integrals may be challenging to solve.
+
+But with some creativity, we can use Monte Carlo for everything.
+
+---
+
+## What if we make lots of assumptions?
+
+Assume that $$\begin{aligned}p(x_0) &= N(m_0, P_0) \\ p_k(x_k | x_{k-1}) &= N(A_{k-1}x_{k-1}, Q_{k-1})\\ p_k(y_k | x_k) &= N(H_k x_k, R_k)\end{aligned}.$$
+
+Then __all the ugly integrals have closed form representations__ by properties of conditional Gaussian distributions.
+
+--
+
+.pull-left[
+Distributions:
+
+$$
+\begin{aligned}
+p(x_k | y_1,\ldots,y_{k-1}) &= N(m^{-}_k, P^{-}_k)\\
+p(x_k | y_1,\ldots,y_{k}) &= N(m_k, P_k)\\
+p(y_{k} | y_1,\ldots,y_{k-1}) &= N(H_k m^-_k, S_k)\\
+\end{aligned}
+$$
+Prediction:
+$$
+\begin{aligned}
+m^-_k &= A_{k-1}m_{k-1}\\
+P^-_k &= A_{k-1}P_{k-1}A^\mathsf{T}_{k-1} + Q_{k-1}
+\end{aligned}
+$$
+
+]
+
+.pull-right[
+Update:
+$$
+\begin{aligned}
+v_k &= y_k - H_k m_k^-\\
+S_k &= H_k P_k^- H_k^\mathsf{T} + R_k\\
+K_k &= P^-_k H_k^\mathsf{T} S_k^{-1}\\
+m_k &= m^-_k + K_{k}v_{k}\\
+P_k &= P^-_k - K_k S_k K_k^\mathsf{T}
+\end{aligned}
+$$
+
+]
+
+---
+
+## Code or it isn't real (Kalman Filter)
+
+.pull-left[
+```{r kalman-filter, echo=TRUE}
+kalman <- function(y, m0, P0, A, Q, H, R) {
+  n <- length(y)
+  m <- double(n+1)
+  P <- double(n+1)
+  m[1] <- m0
+  P[1] <- P0
+  for (k in seq(n)) {
+    mm <- A * m[k]
+    Pm <- A * P[k] * A + Q
+    v <- y[k] - H * mm
+    S <- H * Pm * H + R
+    K <- Pm * H / S
+    m[k+1] <- mm + K * v
+    P[k+1] <- Pm - K * S * K
+  }
+  tibble(t = 1:n, m = m[-1], P = P[-1])
+}
+```
+]
+
+.pull-right[
+```{r simul, echo=TRUE}
+set.seed(2022-06-01)
+x <- double(100)
+for (k in 2:100) x[k] = x[k-1] + rnorm(1)
+y <- x + rnorm(100, sd = 1)
+kf <- kalman(y, 0, 5, 1, 1, 1, 1)
+```
+
+```{r plot-it, fig.height=3, fig.width=4}
+ggplot(bind_cols(kf, x=x, y=y), aes(t)) +
+  geom_ribbon(aes(ymax=m+2*P, ymin=m-2*P), alpha = .2) +
+  geom_line(aes(y=m, color = "kf_mean")) +
+  geom_line(aes(y=x, color = "x")) +
+  geom_point(aes(y=y, color = "y")) +
+  theme_bw() +
+  scale_color_manual(breaks = c("kf_mean", "x", "y"),
+                     values = c(kf_mean = "black", x = primary, y=secondary)) +
+  theme(legend.position = "bottom", axis.title=element_blank())
+```
 
 
--->
+
+]
 
 
+---
+
+## Important notes
+
+* So far, we assumed all parameters were known
+
+* "Parameters" here is a bit ambiguous: what is $x_k$?
+
+* In reality, we had 6: `m0, P0, A, Q, H, R`
+
+* I sort of also think of $x$ as "parameters" in the Bayesian sense
+
+* By that I mean, "latent variables for which we have prior distributions"
+
+* What if we want to estimate them?
+
+__Bayesian way__: `m0` and `P0` are already the parameters of for the prior on `x_1`. Put priors on the other 4.
+
+__Frequentist way__: Just maximize the likelihood. Can technically take `P0` $\rightarrow\infty$ to remove it and `m0`
+
+--
+
+The Likelihood is produced as a by-product of the Kalman Filter. 
+
+$$-\ell(\theta) = \sum_{k=1}^T \left(v_k^\mathsf{T}S_k^{-1}v_k + \log |S_k| + m \log 2\pi\right)$$
+
+```
+
+---
+
+## Smoothing (not in the chapter, whoops...)
 
